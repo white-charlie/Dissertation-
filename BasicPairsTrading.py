@@ -14,7 +14,6 @@ import numpy as np
 import seaborn as sns
 import statsmodels.api as sm
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
-import time
 from matplotlib.ticker import PercentFormatter
 
 colours = ['#2E86AB','#D1495B','#6A8EAE','#4A7C59','#C17817', '#5E4A8C','#3A3A3A']
@@ -32,9 +31,6 @@ def set_data(tickers, start, end):
     # Fill missing values
     close_prices = close_prices.fillna(method='ffill').fillna(method='bfill')
     
-    # Add a delay to avoid throttling
-    time.sleep(2)
-    
     return close_prices
 
 start_date = '2020-01-01'
@@ -42,18 +38,11 @@ end_date = '2025-01-01'
 
 
 tickers_tech = [
-    # Semiconductors & Hardware (20)
     'NVDA', 'AVGO', 'AMD', 'INTC', 'QCOM', 'ASML', 'TSM', 'MU', 'TXN', 'LRCX',
     'KLAC', 'AMAT', 'MRVL', 'NXPI', 'ON', 'MCHP', 'ADI', 'TER', 'SWKS', 'MPWR',
-    
-    # Cloud/Enterprise Software (15)
     'MSFT', 'CRM', 'NOW', 'SNOW', 'PANW', 'FTNT', 'CRWD', 'TEAM', 'DDOG', 'NET',
     'MDB', 'WDAY', 'ADBE', 'INTU', 'AMD',
-    
-    # Biotech (5)
     'REGN', 'VRTX', 'BIIB', 'ILMN', 'MRNA',
-    
-    # Internet Platforms (10)
     'META', 'GOOGL', 'AMZN', 'BABA', 'MELI', 'SPOT', 'DOCU', 'ZS', 'TTD', 'ROKU'
 ]
 
@@ -61,8 +50,8 @@ tickers_commodities = [
     'TECK', 'VLO', 'NUE', 'MPC', 'FCX', 'GPK', 'LUN.TO', 'CAT', 'EMR', 'IYT', 
     'SLGN', 'FNV', 'XEL', 'HES', 'CVX', 'NXE', 'PKG', 'STLD', 'COP', 'RIO', 
     'BHP', 'SCCO', 'CCJ', 'COST', 'WPM', 'SHW', 'DE', 'CTVA', 'BG', 'AMKBY', 
-    'WLK', 'SBLK', 'CF', 'APD', 'CS.TO', 'SILV', 'DOW', 'CSIQ', 'TAN', 'LPG', 
-    'FRO', 'CTVA', 'BG', 'WLK', 'SBLK', 'CF', 'APD', 'CS.TO', 'SILV', 
+    'WLK', 'SBLK', 'CF', 'APD', 'CS.TO', 'DOW', 'CSIQ', 'TAN', 'LPG', 
+    'FRO', 'CTVA', 'BG', 'WLK', 'SBLK', 'CF', 'APD', 'CS.TO', 
     'DOW', 'CSIQ', 'TAN', 'LPG', 'FRO'
 ]
 
@@ -127,13 +116,11 @@ for stock1, stock2, corr in high_correlation_stocks:
     trace_statistic = johansen_result.lr1[0]
     critical_value_5 = johansen_result.cvt[0, 1]
 
-    #Consider using Phillips-Ouliaris cointegration test?
-
     # Check if cointegrated
     if p_value < 0.05 or trace_statistic > critical_value_5:
-        print(f"{stock1} and {stock2} are cointegrated! Running strategy...")
+        print(f"{stock1} and {stock2} are cointegrated. Running...")
 
-        #Use Kalman Filter for hedge ratio estimation
+        #Use Kalman Filter for dynamic hedge ratio estimation
         kf = KalmanFilter(transition_matrices=[1],
                           observation_matrices=[1],
                           initial_state_mean=0,
@@ -155,10 +142,8 @@ for stock1, stock2, corr in high_correlation_stocks:
         # Define entry and exit Z-scores
         upper_threshold, lower_threshold = 2, 0
         
-        # Initialize Position column
+
         data['Position'] = 0
-        
-        # Set up long entry and exit conditions
         data['long entry'] = ((data['Z_Score'] < -upper_threshold) & (data['Z_Score'].shift(1) > -upper_threshold))
         data['long exit'] = ((data['Z_Score'] > -lower_threshold) & (data['Z_Score'].shift(1) < -lower_threshold))
         
@@ -178,15 +163,15 @@ for stock1, stock2, corr in high_correlation_stocks:
         data['Position'] = data['Position'].shift(1)
         
         # Calculate Returns
-        transaction_cost = 0.001
+
+        # Initially model with zero transation costs
+        transaction_cost = 0.000
         data['Spread_Return'] = data['Spread'].pct_change()
         data['Strategy_Return'] = data['Position'].shift(1) * data['Spread_Return']
         data['Strategy_Return'] -= transaction_cost * abs(data['Position'].diff())
 
         # Calculate Cumulative Return
         data['Cumulative_Return'] = (1 + data['Strategy_Return']).cumprod()
-        
-        # Store cumulative returns
         pair_name = f"{stock1}-{stock2}"
         cumulative_returns_dict[pair_name] = data['Cumulative_Return'].copy()
         
@@ -201,17 +186,12 @@ for stock1, stock2, corr in high_correlation_stocks:
         annualized_return = (data['Cumulative_Return'].iloc[-1] ** (252/len(data))) - 1 
         calmar_ratio = annualized_return / max_drawdown if max_drawdown != 0 else np.nan
 
-        # Store results
         results.append((stock1, stock2, corr, sharpe_ratio, max_drawdown, data['Cumulative_Return'].iloc[-1], calmar_ratio))
-
-        # Plot cumulative returns
         plt.plot(data.index, data['Cumulative_Return'], label=pair_name, linewidth=1.5)
 
     else:
         print(f"{stock1} and {stock2} are NOT cointegrated. Skipping.")
         
-
-# Convert results to DataFrame
 results_df = pd.DataFrame(results, columns=['Stock1', 'Stock2', 'Correlation', 'Sharpe Ratio', 'Max Drawdown', 'Final Return','Calmar Ratio'])
 print("\nFinal Results:")
 print(results_df.sort_values(by='Sharpe Ratio', ascending=False))
@@ -240,13 +220,9 @@ for result in filtered_results:
     stock1, stock2, corr, sharpe_ratio, max_drawdown, _, calmar_ratio = result
     pair_name = f"{stock1}-{stock2}"
     
-    # Ensure we are extracting the cumulative return series from the correct dataframe
     cumulative_return = cumulative_returns_dict[pair_name]
-    
-    # Reindex the cumulative return to match the data.index range from 2015 onwards
     cumulative_return = cumulative_return.reindex(data.index, method='ffill')
     
-    # Plot the cumulative returns for each pair
     plt.plot(data.index, cumulative_return, label=pair_name, linewidth=1.5)
 
 plt.title(f"Cumulative Returns of Pairs with Sharpe Ratios >= {threshold_2}", fontsize=16)
@@ -262,7 +238,6 @@ plt.show()
 
 # Assume equal weight allocation 
 
-# Initialize portfolio returns series
 portfolio_returns_p = pd.Series(0, index=data.index)
 
 for result in filtered_results:
@@ -359,11 +334,13 @@ plt.show()
 
 #%% Comparison to becnhmark composite index
 
+# Alter benchmark if desired
 benchmark = ['^IXIC']
 nasdaq = yf.download(benchmark[0], start=start_date, end=end_date )
 
 nasdaq['Returns'] = nasdaq['Close'].pct_change()
 nasdaq['Cumulative Returns'] = (1 + nasdaq['Returns']).cumprod()
+
 # Compute daily log returns
 nasdaq["Daily_Return"] = np.log(nasdaq["Close"] / nasdaq["Close"].shift(1))
 nasdaq["Sharpe Ratio"] = nasdaq["Daily_Return"].mean()/ nasdaq["Daily_Return"].std() * np.sqrt(252)
@@ -377,7 +354,6 @@ nasdaq_max_drawdown = nasdaq_max_drawdown.item()
 nasdaq_sharpe = nasdaq['Daily_Return'].mean() / nasdaq['Daily_Return'].std() * np.sqrt(252)
 nasdaq_calmar = nasdaq_annual_return / abs((nasdaq_max_drawdown)) if nasdaq_max_drawdown != 0 else np.nan
 nasdaq_sortino = nasdaq_annual_return / (nasdaq['Returns'][nasdaq['Returns'] < 0].std() * np.sqrt(252))
-
 
 nasdaq_metrics = {
     "Annualised Return": nasdaq_annual_return,
@@ -411,9 +387,6 @@ plt.show()
 
 # ------------------Perform Econometrics Tests------------------------
 
-
-# Formulate returns
-
 pair_names = []
 cumulative_returns_list = []
 buy_hold_cumulative_returns_dict = {}
@@ -425,7 +398,6 @@ for stock1, stock2, corr, sharpe_ratio, max_drawdown, final_return, calmar_ratio
     buy_hold_cumulative_return = ((data[stock1].pct_change() + data[stock2].pct_change()) / 2).add(1).cumprod()
     buy_hold_cumulative_returns_dict[pair_name] = buy_hold_cumulative_return
 
-# Align all cumulative return series to the same index (dates)
 aligned_returns = pd.DataFrame(index=data.index)
 for pair_name, returns in zip(pair_names, cumulative_returns_list):
     aligned_returns[pair_name] = returns
@@ -434,7 +406,6 @@ buy_hold_aligned_returns = pd.DataFrame(index=data.index)
 for pair_name, returns in buy_hold_cumulative_returns_dict.items():
     buy_hold_aligned_returns[pair_name] = returns
 
-# Fill NaN values with 1.0 (initial value for cumulative returns)
 aligned_returns = aligned_returns.fillna(1.0)
 buy_hold_aligned_returns = buy_hold_aligned_returns.fillna(1.0)
 
@@ -461,33 +432,30 @@ def variance_ratio_test(returns, k):
     r1_t = (ranks - T + (1/2)) / np.sqrt((T - 1) * (T + 1) / 12)  # Standardized ranks
     rolling_r1 = pd.Series(r1_t).rolling(window=k).sum().dropna()
     
-    # Variance of rank-based statistic
+    # Variance of rank-based statistic 1
     var_r1_1 = np.var(r1_t, ddof=1)
     var_r1_k = np.var(rolling_r1, ddof=1)
     vr_r_1 = var_r1_k / (k * var_r1_1)
     
-    # Compute phi(k)
+    # Calculate Rank-based test statistic 1
     phi_k = 2 * (2 * k - 1) * (k - 1) / (3 * k * T)
-    
-    # Rank-based test statistic
     R_1 = (vr_r_1 - 1) / np.sqrt(phi_k)
     p_R_1 = 2 * (1 - norm.cdf(abs(R_1)))  # Two-tailed test
 
-    # Rank-based transformation 2
+    # Rank-based test statistic 2
     r2_t = norm.ppf(ranks / (T + 1))  # Inverse normal CDF of rank
     rolling_r2 = pd.Series(r2_t).rolling(window=k).sum().dropna()
     
-    # Variance of sign-based statistic
+    # Variance of Rank-based statistic 2
     var_r2_1 = np.var(r2_t, ddof=1)
     var_r2_k = np.var(rolling_r2, ddof=1)
     vr_r_2 = var_r2_k / (k * var_r2_1)
     
-    # Sign-based test statistic
+    # Calculate Rank-based test statistic 2
     R_2 = (vr_r_2 - 1) / np.sqrt(phi_k)
     p_R_2 = 2 * (1 - norm.cdf(abs(R_2)))
 
     return vr_r_1, R_1, p_R_1, vr_r_2, R_2, p_R_2
-
 
 # Test Variance Ratio at various lags
 T = len(pairs_trading_returns)
@@ -495,8 +463,6 @@ print(f"T={T}")
 
 # Perform Variance Ratio Test
 lags = [2, 3, 4, 5, 10, 20, 30, 40]
-
-# Create a DataFrame to store results
 columns = ["Strategy", "Lag", "VR1", "R1", "p-value (R1)", "VR2", "R2", "p-value (R2)"]
 results = []
 
@@ -510,14 +476,11 @@ for k in lags:
     vr_r_1, R_1, p_R_1, vr_r_2, R_2, p_R_2 = variance_ratio_test(buy_hold_returns, k)
     results.append(["Buy-and-Hold", k, vr_r_1, R_1, p_R_1, vr_r_2, R_2, p_R_2])
 
-# Convert to DataFrame
 df_results = pd.DataFrame(results, columns=columns)
 
-# Split into two DataFrames
 df_pairs_trading = df_results[df_results["Strategy"] == "Pairs Trading"].drop(columns=["Strategy"])
 df_buy_and_hold = df_results[df_results["Strategy"] == "Buy-and-Hold"].drop(columns=["Strategy"])
 
-# Format for better readability
 def format_df(df):
     df["VR1"] = df["VR1"].apply(lambda x: f"{x:.4f}")
     df["R1"] = df["R1"].apply(lambda x: f"{x:.4f}")
@@ -530,14 +493,12 @@ def format_df(df):
 df_pairs_trading = format_df(df_pairs_trading)
 df_buy_and_hold = format_df(df_buy_and_hold)
 
-# Display the formatted tables
 print("Pairs Trading Results:")
 print(df_pairs_trading)
 
 print("\nBuy-and-Hold Results:")
 print(df_buy_and_hold)
 
-# Function to save DataFrame as an image using matplotlib
 def save_df_as_image(df, filename):
     fig, ax = plt.subplots(figsize=(12, 4))  # Adjust figure size as needed
     ax.axis('tight')
@@ -558,7 +519,6 @@ from statsmodels.stats.diagnostic import acorr_ljungbox
 # Define your fixed lags of interest
 lags = [2, 3, 4, 5, 10, 20, 30, 40]
 
-# Ensure returns are pandas Series
 pairs_trading_returns = pd.Series(pairs_trading_returns)
 buy_hold_returns = pd.Series(buy_hold_returns)
 
@@ -585,7 +545,7 @@ def run_autocorrelation_analysis(returns, strategy_name):
 run_autocorrelation_analysis(pairs_trading_returns, "Pairs Trading")
 run_autocorrelation_analysis(buy_hold_returns, "Buy-and-Hold")
 
-#%% LM autocorrelation test
+#%% Breusch-Godfrey (LM) autocorrelation test
 from statsmodels.regression.linear_model import OLS
 from statsmodels.stats.diagnostic import acorr_breusch_godfrey
 from statsmodels.tsa.tsatools import lagmat
@@ -628,10 +588,8 @@ for stock1, stock2, _, _, _, _, _ in filtered_results:
     LM_stat = len(aux_y) * r_squared_aux  # T * R^2 from auxiliary regression
     p_value = chi2.sf(LM_stat, df=nlags)  # Chi-squared p-value
 
-    # Store results
     lm_test_results[f"{stock1}-{stock2}"] = {"LM Statistic": LM_stat, "p-value": p_value}
 
-# Display results
 print("\nBreusch-Godfrey LM Test Results:\n")
 print("Stock Pair        | LM Statistic | p-value ")
 print("--------------------------------------------")
