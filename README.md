@@ -27,7 +27,3 @@ The project implements a pairs trading strategy designed to exploit temporary mi
 7. Run!
 
 ---
-
-If you use or adapt this code, please cite:
-White, C. (2025). Testing the Efficient Market Hypothesis in the Context of Algorithmic Trading: A Quantitative Analysis. University of Nottingham
- 
