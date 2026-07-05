@@ -1,4 +1,4 @@
-# 📈 Pairs Trading Algorithm 
+# Pairs Trading Algorithm 
 This repository contains the Python code used in my undergraduate dissertation: \
 **"Testing the Efficient Market Hypothesis in the Context of Algorithmic Trading: A Quantitative Analysis."**
 
